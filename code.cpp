@@ -514,27 +514,38 @@ int2048::multiply_abs_fft(const std::vector<int> &lhs,
     transform_size <<= 1;
   }
 
-  std::vector<std::complex<double>> left(transform_size);
-  std::vector<std::complex<double>> right(transform_size);
+  std::vector<std::complex<double>> packed(transform_size);
 
   for (std::size_t i = 0; i < left_parts.size(); ++i) {
-    left[i] = std::complex<double>(
-        static_cast<double>(left_parts[i]), 0.0);
+    packed[i].real(static_cast<double>(left_parts[i]));
   }
 
   for (std::size_t i = 0; i < right_parts.size(); ++i) {
-    right[i] = std::complex<double>(
-        static_cast<double>(right_parts[i]), 0.0);
+    packed[i].imag(static_cast<double>(right_parts[i]));
   }
 
-  fft(left, false);
-  fft(right, false);
+  fft(packed, false);
+
+  std::vector<std::complex<double>> product(transform_size);
+  const std::complex<double> negative_half_i(0.0, -0.5);
 
   for (std::size_t i = 0; i < transform_size; ++i) {
-    left[i] *= right[i];
+    const std::size_t mirror =
+        (transform_size - i) & (transform_size - 1);
+
+    const std::complex<double> mirrored =
+        std::conj(packed[mirror]);
+
+    const std::complex<double> left_frequency =
+        (packed[i] + mirrored) * 0.5;
+
+    const std::complex<double> right_frequency =
+        (packed[i] - mirrored) * negative_half_i;
+
+    product[i] = left_frequency * right_frequency;
   }
 
-  fft(left, true);
+  fft(product, true);
 
   std::vector<int> small_digits;
   small_digits.reserve(coefficient_count + 8);
@@ -543,7 +554,7 @@ int2048::multiply_abs_fft(const std::vector<int> &lhs,
 
   for (std::size_t i = 0; i < coefficient_count; ++i) {
     const long long coefficient =
-        static_cast<long long>(left[i].real() + 0.5);
+        static_cast<long long>(product[i].real() + 0.5);
     const long long current = coefficient + carry;
 
     small_digits.push_back(
@@ -688,12 +699,12 @@ void int2048::divmod_abs_knuth(
     int borrow = 0;
 
     for (std::size_t i = 0; i < divisor_size; ++i) {
-      const long long product =
+      const long long product_value =
           estimate * normalized_divisor[i] + product_carry;
 
-      product_carry = product / base;
+      product_carry = product_value / base;
       const int low_product =
-          static_cast<int>(product % base);
+          static_cast<int>(product_value % base);
 
       int current =
           normalized_dividend[j + i] - low_product - borrow;
@@ -759,34 +770,63 @@ void int2048::divide_3n_2n(
     std::size_t half_size,
     std::vector<int> &quotient,
     std::vector<int> &remainder) {
+  const std::vector<int> low =
+      slice_vector(dividend, 0, half_size);
   const std::vector<int> middle =
       slice_vector(dividend, half_size, half_size);
   const std::vector<int> high =
       slice_vector(dividend, half_size * 2, half_size);
+
+  const std::vector<int> divisor_low =
+      slice_vector(divisor, 0, half_size);
   const std::vector<int> divisor_high =
       slice_vector(divisor, half_size, half_size);
 
   const std::vector<int> high_pair =
       add_vectors(middle, shift_vector(high, half_size));
 
-  if (compare_vectors(high, divisor_high) < 0) {
-    std::vector<int> ignored_remainder;
+  std::vector<int> upper_remainder;
 
+  if (compare_vectors(high, divisor_high) < 0) {
     divide_2n_1n(high_pair, divisor_high, half_size,
-                  quotient, ignored_remainder);
+                  quotient, upper_remainder);
   } else {
     quotient = maximum_block(half_size);
+
+    const std::vector<int> upper_product =
+        multiply_abs(quotient, divisor_high);
+
+    upper_remainder =
+        subtract_vectors(high_pair, upper_product);
   }
 
-  std::vector<int> product =
-      multiply_abs(quotient, divisor);
+  const std::vector<int> minuend =
+      add_vectors(low,
+                  shift_vector(upper_remainder, half_size));
 
-  while (compare_vectors(product, dividend) > 0) {
-    decrement_vector(quotient);
-    product = subtract_vectors(product, divisor);
+  const std::vector<int> lower_product =
+      multiply_abs(quotient, divisor_low);
+
+  if (compare_vectors(minuend, lower_product) >= 0) {
+    remainder = subtract_vectors(minuend, lower_product);
+  } else {
+    std::vector<int> deficit =
+        subtract_vectors(lower_product, minuend);
+
+    while (true) {
+      decrement_vector(quotient);
+
+      const int comparison =
+          compare_vectors(divisor, deficit);
+
+      if (comparison >= 0) {
+        remainder = subtract_vectors(divisor, deficit);
+        break;
+      }
+
+      deficit = subtract_vectors(deficit, divisor);
+    }
   }
-
-  remainder = subtract_vectors(dividend, product);
 
   while (compare_vectors(remainder, divisor) >= 0) {
     remainder = subtract_vectors(remainder, divisor);
