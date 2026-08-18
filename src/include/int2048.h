@@ -20,6 +20,7 @@ private:
   static constexpr int fft_base = 1000;
   static constexpr std::size_t fft_parts = 3;
   static constexpr std::size_t fft_threshold = 64;
+  static constexpr std::size_t division_threshold = 64;
 
   std::vector<int> digits;
   bool negative;
@@ -52,6 +53,32 @@ private:
                          const std::vector<int> &divisor,
                          std::vector<int> &quotient,
                          std::vector<int> &remainder);
+
+  static void divmod_abs_knuth(
+      const std::vector<int> &dividend,
+      const std::vector<int> &divisor,
+      std::vector<int> &quotient,
+      std::vector<int> &remainder);
+
+  static void divmod_abs_burnikel(
+      const std::vector<int> &dividend,
+      const std::vector<int> &divisor,
+      std::vector<int> &quotient,
+      std::vector<int> &remainder);
+
+  static void divide_2n_1n(
+      const std::vector<int> &dividend,
+      const std::vector<int> &divisor,
+      std::size_t block_size,
+      std::vector<int> &quotient,
+      std::vector<int> &remainder);
+
+  static void divide_3n_2n(
+      const std::vector<int> &dividend,
+      const std::vector<int> &divisor,
+      std::size_t half_size,
+      std::vector<int> &quotient,
+      std::vector<int> &remainder);
 
 public:
   int2048();

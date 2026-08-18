@@ -1,14 +1,207 @@
 #include "int2048.h"
 
+namespace {
+
+constexpr int vector_base = 1000000000;
+
+void trim_vector(std::vector<int> &value) {
+  while (value.size() > 1 && value.back() == 0) {
+    value.pop_back();
+  }
+
+  if (value.empty()) {
+    value.push_back(0);
+  }
+}
+
+bool vector_is_zero(const std::vector<int> &value) {
+  return value.size() == 1 && value[0] == 0;
+}
+
+int compare_vectors(const std::vector<int> &lhs,
+                    const std::vector<int> &rhs) {
+  if (lhs.size() != rhs.size()) {
+    return lhs.size() < rhs.size() ? -1 : 1;
+  }
+
+  for (std::size_t i = lhs.size(); i > 0; --i) {
+    if (lhs[i - 1] != rhs[i - 1]) {
+      return lhs[i - 1] < rhs[i - 1] ? -1 : 1;
+    }
+  }
+
+  return 0;
+}
+
+std::vector<int> slice_vector(const std::vector<int> &value,
+                              std::size_t begin,
+                              std::size_t count) {
+  if (begin >= value.size() || count == 0) {
+    return std::vector<int>(1, 0);
+  }
+
+  std::size_t end = begin + count;
+
+  if (end < begin || end > value.size()) {
+    end = value.size();
+  }
+
+  std::vector<int> result(
+      value.begin() +
+          static_cast<std::vector<int>::difference_type>(begin),
+      value.begin() +
+          static_cast<std::vector<int>::difference_type>(end));
+
+  trim_vector(result);
+  return result;
+}
+
+std::vector<int> shift_vector(const std::vector<int> &value,
+                              std::size_t amount) {
+  if (vector_is_zero(value)) {
+    return std::vector<int>(1, 0);
+  }
+
+  std::vector<int> result(amount, 0);
+  result.insert(result.end(), value.begin(), value.end());
+  return result;
+}
+
+std::vector<int> add_vectors(const std::vector<int> &lhs,
+                             const std::vector<int> &rhs) {
+  const std::size_t result_size =
+      lhs.size() > rhs.size() ? lhs.size() : rhs.size();
+
+  std::vector<int> result(result_size + 1, 0);
+  int carry = 0;
+
+  for (std::size_t i = 0; i < result_size; ++i) {
+    long long current = carry;
+
+    if (i < lhs.size()) {
+      current += lhs[i];
+    }
+
+    if (i < rhs.size()) {
+      current += rhs[i];
+    }
+
+    result[i] = static_cast<int>(current % vector_base);
+    carry = static_cast<int>(current / vector_base);
+  }
+
+  result[result_size] = carry;
+  trim_vector(result);
+  return result;
+}
+
+std::vector<int> subtract_vectors(
+    const std::vector<int> &lhs,
+    const std::vector<int> &rhs) {
+  std::vector<int> result = lhs;
+  int borrow = 0;
+
+  for (std::size_t i = 0; i < result.size(); ++i) {
+    long long current =
+        static_cast<long long>(result[i]) - borrow;
+
+    if (i < rhs.size()) {
+      current -= rhs[i];
+    }
+
+    if (current < 0) {
+      current += vector_base;
+      borrow = 1;
+    } else {
+      borrow = 0;
+    }
+
+    result[i] = static_cast<int>(current);
+  }
+
+  trim_vector(result);
+  return result;
+}
+
+void increment_vector(std::vector<int> &value) {
+  int carry = 1;
+
+  for (std::size_t i = 0;
+       i < value.size() && carry != 0;
+       ++i) {
+    const int current = value[i] + carry;
+    value[i] = current % vector_base;
+    carry = current / vector_base;
+  }
+
+  if (carry != 0) {
+    value.push_back(carry);
+  }
+}
+
+void decrement_vector(std::vector<int> &value) {
+  std::size_t position = 0;
+
+  while (value[position] == 0) {
+    value[position] = vector_base - 1;
+    ++position;
+  }
+
+  --value[position];
+  trim_vector(value);
+}
+
+void multiply_vector_small(std::vector<int> &value,
+                           int multiplier) {
+  long long carry = 0;
+
+  for (std::size_t i = 0; i < value.size(); ++i) {
+    const long long current =
+        static_cast<long long>(value[i]) * multiplier + carry;
+
+    value[i] = static_cast<int>(current % vector_base);
+    carry = current / vector_base;
+  }
+
+  if (carry != 0) {
+    value.push_back(static_cast<int>(carry));
+  }
+
+  trim_vector(value);
+}
+
+void divide_vector_small(std::vector<int> &value,
+                         int divisor) {
+  long long remainder = 0;
+
+  for (std::size_t i = value.size(); i > 0; --i) {
+    const long long current =
+        remainder * vector_base + value[i - 1];
+
+    value[i - 1] = static_cast<int>(current / divisor);
+    remainder = current % divisor;
+  }
+
+  trim_vector(value);
+}
+
+std::vector<int> maximum_block(std::size_t size) {
+  return std::vector<int>(size, vector_base - 1);
+}
+
+} // namespace
+
 namespace sjtu {
 
 int2048::int2048() : digits(1, 0), negative(false) {}
 
-int2048::int2048(long long value) : digits(), negative(value < 0) {
+int2048::int2048(long long value)
+    : digits(), negative(value < 0) {
   unsigned long long magnitude;
 
   if (value < 0) {
-    magnitude = static_cast<unsigned long long>(-(value + 1));
+    magnitude =
+        static_cast<unsigned long long>(-(value + 1));
     ++magnitude;
   } else {
     magnitude = static_cast<unsigned long long>(value);
@@ -50,69 +243,15 @@ bool int2048::is_zero(const std::vector<int> &value) {
 
 int int2048::compare_abs(const std::vector<int> &lhs,
                          const std::vector<int> &rhs) {
-  if (lhs.size() != rhs.size()) {
-    return lhs.size() < rhs.size() ? -1 : 1;
-  }
-
-  for (std::size_t i = lhs.size(); i > 0; --i) {
-    if (lhs[i - 1] != rhs[i - 1]) {
-      return lhs[i - 1] < rhs[i - 1] ? -1 : 1;
-    }
-  }
-
-  return 0;
+  return compare_vectors(lhs, rhs);
 }
 
 void int2048::add_abs(const std::vector<int> &rhs) {
-  const std::size_t original_size = digits.size();
-  const std::size_t rhs_size = rhs.size();
-  const std::size_t result_size =
-      original_size > rhs_size ? original_size : rhs_size;
-
-  digits.resize(result_size + 1, 0);
-
-  int carry = 0;
-
-  for (std::size_t i = 0; i < result_size; ++i) {
-    int current = carry;
-
-    if (i < original_size) {
-      current += digits[i];
-    }
-
-    if (i < rhs_size) {
-      current += rhs[i];
-    }
-
-    digits[i] = current % base;
-    carry = current / base;
-  }
-
-  digits[result_size] = carry;
-  normalize();
+  digits = add_vectors(digits, rhs);
 }
 
 void int2048::subtract_abs(const std::vector<int> &rhs) {
-  int borrow = 0;
-
-  for (std::size_t i = 0; i < digits.size(); ++i) {
-    int current = digits[i] - borrow;
-
-    if (i < rhs.size()) {
-      current -= rhs[i];
-    }
-
-    if (current < 0) {
-      current += base;
-      borrow = 1;
-    } else {
-      borrow = 0;
-    }
-
-    digits[i] = current;
-  }
-
-  normalize();
+  digits = subtract_vectors(digits, rhs);
 }
 
 void int2048::fft(std::vector<std::complex<double>> &values,
@@ -138,7 +277,9 @@ void int2048::fft(std::vector<std::complex<double>> &values,
 
   const double pi = std::acos(-1.0);
 
-  for (std::size_t length = 2; length <= size; length <<= 1) {
+  for (std::size_t length = 2;
+       length <= size;
+       length <<= 1) {
     const double angle =
         2.0 * pi / static_cast<double>(length) *
         (inverse ? -1.0 : 1.0);
@@ -146,11 +287,15 @@ void int2048::fft(std::vector<std::complex<double>> &values,
     const std::complex<double> root(std::cos(angle),
                                     std::sin(angle));
 
-    for (std::size_t start = 0; start < size; start += length) {
+    for (std::size_t start = 0;
+         start < size;
+         start += length) {
       std::complex<double> factor(1.0, 0.0);
       const std::size_t half = length >> 1;
 
-      for (std::size_t offset = 0; offset < half; ++offset) {
+      for (std::size_t offset = 0;
+           offset < half;
+           ++offset) {
         const std::complex<double> even =
             values[start + offset];
         const std::complex<double> odd =
@@ -195,10 +340,7 @@ int2048::multiply_abs_naive(const std::vector<int> &lhs,
     result[i + rhs.size()] = static_cast<int>(carry);
   }
 
-  while (result.size() > 1 && result.back() == 0) {
-    result.pop_back();
-  }
-
+  trim_vector(result);
   return result;
 }
 
@@ -221,18 +363,14 @@ int2048::multiply_abs_fft(const std::vector<int> &lhs,
     int chunk = rhs[i];
 
     for (std::size_t part = 0; part < fft_parts; ++part) {
-      right_parts[i * fft_parts + part] = chunk % fft_base;
+      right_parts[i * fft_parts + part] =
+          chunk % fft_base;
       chunk /= fft_base;
     }
   }
 
-  while (left_parts.size() > 1 && left_parts.back() == 0) {
-    left_parts.pop_back();
-  }
-
-  while (right_parts.size() > 1 && right_parts.back() == 0) {
-    right_parts.pop_back();
-  }
+  trim_vector(left_parts);
+  trim_vector(right_parts);
 
   const std::size_t coefficient_count =
       left_parts.size() + right_parts.size() - 1;
@@ -286,10 +424,7 @@ int2048::multiply_abs_fft(const std::vector<int> &lhs,
     carry /= fft_base;
   }
 
-  while (small_digits.size() > 1 &&
-         small_digits.back() == 0) {
-    small_digits.pop_back();
-  }
+  trim_vector(small_digits);
 
   std::vector<int> result;
   result.reserve(
@@ -311,10 +446,7 @@ int2048::multiply_abs_fft(const std::vector<int> &lhs,
     result.push_back(chunk);
   }
 
-  while (result.size() > 1 && result.back() == 0) {
-    result.pop_back();
-  }
-
+  trim_vector(result);
   return result;
 }
 
@@ -333,10 +465,11 @@ int2048::multiply_abs(const std::vector<int> &lhs,
   return multiply_abs_fft(lhs, rhs);
 }
 
-void int2048::divmod_abs(const std::vector<int> &dividend,
-                         const std::vector<int> &divisor,
-                         std::vector<int> &quotient,
-                         std::vector<int> &remainder) {
+void int2048::divmod_abs_knuth(
+    const std::vector<int> &dividend,
+    const std::vector<int> &divisor,
+    std::vector<int> &quotient,
+    std::vector<int> &remainder) {
   if (compare_abs(dividend, divisor) < 0) {
     quotient.assign(1, 0);
     remainder = dividend;
@@ -345,7 +478,6 @@ void int2048::divmod_abs(const std::vector<int> &dividend,
 
   if (divisor.size() == 1) {
     quotient.assign(dividend.size(), 0);
-
     long long current_remainder = 0;
 
     for (std::size_t i = dividend.size(); i > 0; --i) {
@@ -357,10 +489,7 @@ void int2048::divmod_abs(const std::vector<int> &dividend,
       current_remainder = current % divisor[0];
     }
 
-    while (quotient.size() > 1 && quotient.back() == 0) {
-      quotient.pop_back();
-    }
-
+    trim_vector(quotient);
     remainder.assign(1, static_cast<int>(current_remainder));
     return;
   }
@@ -372,40 +501,11 @@ void int2048::divmod_abs(const std::vector<int> &dividend,
   std::vector<int> normalized_dividend = dividend;
   std::vector<int> normalized_divisor = divisor;
 
-  long long carry = 0;
+  multiply_vector_small(normalized_dividend, normalization);
+  multiply_vector_small(normalized_divisor, normalization);
 
-  for (std::size_t i = 0;
-       i < normalized_dividend.size();
-       ++i) {
-    const long long current =
-        static_cast<long long>(normalized_dividend[i]) *
-            normalization +
-        carry;
-
-    normalized_dividend[i] =
-        static_cast<int>(current % base);
-    carry = current / base;
-  }
-
-  if (carry != 0) {
-    normalized_dividend.push_back(static_cast<int>(carry));
-  } else {
+  if (normalized_dividend.size() == dividend_size) {
     normalized_dividend.push_back(0);
-  }
-
-  carry = 0;
-
-  for (std::size_t i = 0;
-       i < normalized_divisor.size();
-       ++i) {
-    const long long current =
-        static_cast<long long>(normalized_divisor[i]) *
-            normalization +
-        carry;
-
-    normalized_divisor[i] =
-        static_cast<int>(current % base);
-    carry = current / base;
   }
 
   const std::size_t quotient_size =
@@ -483,7 +583,6 @@ void int2048::divmod_abs(const std::vector<int> &dividend,
 
     if (top < 0) {
       --estimate;
-
       int addition_carry = 0;
 
       for (std::size_t i = 0; i < divisor_size; ++i) {
@@ -510,9 +609,7 @@ void int2048::divmod_abs(const std::vector<int> &dividend,
     quotient[j] = static_cast<int>(estimate);
   }
 
-  while (quotient.size() > 1 && quotient.back() == 0) {
-    quotient.pop_back();
-  }
+  trim_vector(quotient);
 
   remainder.assign(
       normalized_dividend.begin(),
@@ -520,20 +617,202 @@ void int2048::divmod_abs(const std::vector<int> &dividend,
           static_cast<std::vector<int>::difference_type>(
               divisor_size));
 
-  long long division_remainder = 0;
+  divide_vector_small(remainder, normalization);
+}
 
-  for (std::size_t i = remainder.size(); i > 0; --i) {
-    const long long current =
-        division_remainder * base + remainder[i - 1];
+void int2048::divide_3n_2n(
+    const std::vector<int> &dividend,
+    const std::vector<int> &divisor,
+    std::size_t half_size,
+    std::vector<int> &quotient,
+    std::vector<int> &remainder) {
+  const std::vector<int> low =
+      slice_vector(dividend, 0, half_size);
+  const std::vector<int> middle =
+      slice_vector(dividend, half_size, half_size);
+  const std::vector<int> high =
+      slice_vector(dividend, half_size * 2, half_size);
 
-    remainder[i - 1] =
-        static_cast<int>(current / normalization);
-    division_remainder = current % normalization;
+  const std::vector<int> divisor_high =
+      slice_vector(divisor, half_size, half_size);
+
+  const std::vector<int> high_pair =
+      add_vectors(middle, shift_vector(high, half_size));
+
+  if (compare_vectors(high, divisor_high) < 0) {
+    std::vector<int> ignored_remainder;
+
+    divide_2n_1n(high_pair, divisor_high, half_size,
+                  quotient, ignored_remainder);
+  } else {
+    quotient = maximum_block(half_size);
   }
 
-  while (remainder.size() > 1 && remainder.back() == 0) {
-    remainder.pop_back();
+  std::vector<int> product =
+      multiply_abs(quotient, divisor);
+
+  while (compare_vectors(product, dividend) > 0) {
+    decrement_vector(quotient);
+    product = subtract_vectors(product, divisor);
   }
+
+  remainder = subtract_vectors(dividend, product);
+
+  while (compare_vectors(remainder, divisor) >= 0) {
+    remainder = subtract_vectors(remainder, divisor);
+    increment_vector(quotient);
+  }
+
+  trim_vector(quotient);
+  trim_vector(remainder);
+}
+
+void int2048::divide_2n_1n(
+    const std::vector<int> &dividend,
+    const std::vector<int> &divisor,
+    std::size_t block_size,
+    std::vector<int> &quotient,
+    std::vector<int> &remainder) {
+  if (block_size <= division_threshold) {
+    divmod_abs_knuth(dividend, divisor, quotient, remainder);
+    return;
+  }
+
+  const std::size_t half_size = block_size >> 1;
+
+  const std::vector<int> low =
+      slice_vector(dividend, 0, half_size);
+  const std::vector<int> upper =
+      slice_vector(dividend, half_size, half_size * 3);
+
+  std::vector<int> quotient_high;
+  std::vector<int> upper_remainder;
+
+  divide_3n_2n(upper, divisor, half_size,
+                quotient_high, upper_remainder);
+
+  const std::vector<int> lower_dividend =
+      add_vectors(low,
+                  shift_vector(upper_remainder, half_size));
+
+  std::vector<int> quotient_low;
+
+  divide_3n_2n(lower_dividend, divisor, half_size,
+                quotient_low, remainder);
+
+  quotient =
+      add_vectors(quotient_low,
+                  shift_vector(quotient_high, half_size));
+
+  trim_vector(quotient);
+  trim_vector(remainder);
+}
+
+void int2048::divmod_abs_burnikel(
+    const std::vector<int> &dividend,
+    const std::vector<int> &divisor,
+    std::vector<int> &quotient,
+    std::vector<int> &remainder) {
+  const int normalization = base / (divisor.back() + 1);
+
+  std::vector<int> normalized_dividend = dividend;
+  std::vector<int> normalized_divisor = divisor;
+
+  multiply_vector_small(normalized_dividend, normalization);
+  multiply_vector_small(normalized_divisor, normalization);
+
+  std::size_t block_size = 1;
+
+  while (block_size < normalized_divisor.size()) {
+    block_size <<= 1;
+  }
+
+  const std::size_t padding =
+      block_size - normalized_divisor.size();
+
+  normalized_divisor =
+      shift_vector(normalized_divisor, padding);
+  normalized_dividend =
+      shift_vector(normalized_dividend, padding);
+
+  const std::size_t block_count =
+      (normalized_dividend.size() + block_size - 1) /
+      block_size;
+
+  quotient.assign(block_count * block_size, 0);
+  remainder.assign(1, 0);
+
+  for (std::size_t block = block_count;
+       block > 0;
+       --block) {
+    const std::size_t block_index = block - 1;
+
+    const std::vector<int> current_block =
+        slice_vector(normalized_dividend,
+                     block_index * block_size,
+                     block_size);
+
+    const std::vector<int> current_dividend =
+        add_vectors(current_block,
+                    shift_vector(remainder, block_size));
+
+    std::vector<int> quotient_block;
+
+    divide_2n_1n(current_dividend,
+                  normalized_divisor,
+                  block_size,
+                  quotient_block,
+                  remainder);
+
+    const std::size_t offset = block_index * block_size;
+
+    if (offset + quotient_block.size() > quotient.size()) {
+      quotient.resize(offset + quotient_block.size(), 0);
+    }
+
+    for (std::size_t i = 0;
+         i < quotient_block.size();
+         ++i) {
+      quotient[offset + i] = quotient_block[i];
+    }
+  }
+
+  trim_vector(quotient);
+
+  if (padding != 0) {
+    remainder =
+        slice_vector(remainder,
+                     padding,
+                     remainder.size());
+  }
+
+  divide_vector_small(remainder, normalization);
+  trim_vector(remainder);
+}
+
+void int2048::divmod_abs(
+    const std::vector<int> &dividend,
+    const std::vector<int> &divisor,
+    std::vector<int> &quotient,
+    std::vector<int> &remainder) {
+  if (compare_abs(dividend, divisor) < 0) {
+    quotient.assign(1, 0);
+    remainder = dividend;
+    return;
+  }
+
+  const std::size_t quotient_size =
+      dividend.size() - divisor.size() + 1;
+
+  if (divisor.size() <= division_threshold ||
+      quotient_size <= division_threshold) {
+    divmod_abs_knuth(dividend, divisor,
+                     quotient, remainder);
+    return;
+  }
+
+  divmod_abs_burnikel(dividend, divisor,
+                      quotient, remainder);
 }
 
 void int2048::read(const std::string &value) {
@@ -719,19 +998,7 @@ int2048 &int2048::operator/=(const int2048 &rhs) {
   divmod_abs(digits, rhs.digits, quotient, remainder);
 
   if (result_negative && !is_zero(remainder)) {
-    int carry = 1;
-
-    for (std::size_t i = 0;
-         i < quotient.size() && carry != 0;
-         ++i) {
-      const int current = quotient[i] + carry;
-      quotient[i] = current % base;
-      carry = current / base;
-    }
-
-    if (carry != 0) {
-      quotient.push_back(carry);
-    }
+    increment_vector(quotient);
   }
 
   digits = quotient;
