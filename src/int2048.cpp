@@ -806,7 +806,7 @@ std::ostream &operator<<(std::ostream &output,
        --i) {
     const int chunk = value.digits[i - 1];
 
-    for (int divisor = base / 10;
+    for (int divisor = int2048::base / 10;
          divisor != 0;
          divisor /= 10) {
       output.put(static_cast<char>(
