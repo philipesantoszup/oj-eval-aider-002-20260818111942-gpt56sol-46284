@@ -177,27 +177,22 @@ int2048::multiply_abs_naive(const std::vector<int> &lhs,
     return std::vector<int>(1, 0);
   }
 
-  std::vector<long long> temporary(lhs.size() + rhs.size(), 0);
+  std::vector<int> result(lhs.size() + rhs.size(), 0);
 
   for (std::size_t i = 0; i < lhs.size(); ++i) {
+    long long carry = 0;
+
     for (std::size_t j = 0; j < rhs.size(); ++j) {
-      temporary[i + j] +=
-          static_cast<long long>(lhs[i]) * rhs[j];
+      const long long current =
+          static_cast<long long>(result[i + j]) +
+          static_cast<long long>(lhs[i]) * rhs[j] +
+          carry;
+
+      result[i + j] = static_cast<int>(current % base);
+      carry = current / base;
     }
-  }
 
-  std::vector<int> result(temporary.size(), 0);
-  long long carry = 0;
-
-  for (std::size_t i = 0; i < temporary.size(); ++i) {
-    const long long current = temporary[i] + carry;
-    result[i] = static_cast<int>(current % base);
-    carry = current / base;
-  }
-
-  while (carry != 0) {
-    result.push_back(static_cast<int>(carry % base));
-    carry /= base;
+    result[i + rhs.size()] = static_cast<int>(carry);
   }
 
   while (result.size() > 1 && result.back() == 0) {
@@ -210,17 +205,25 @@ int2048::multiply_abs_naive(const std::vector<int> &lhs,
 std::vector<int>
 int2048::multiply_abs_fft(const std::vector<int> &lhs,
                           const std::vector<int> &rhs) {
-  std::vector<int> left_parts(lhs.size() * 2, 0);
-  std::vector<int> right_parts(rhs.size() * 2, 0);
+  std::vector<int> left_parts(lhs.size() * fft_parts, 0);
+  std::vector<int> right_parts(rhs.size() * fft_parts, 0);
 
   for (std::size_t i = 0; i < lhs.size(); ++i) {
-    left_parts[i * 2] = lhs[i] % fft_base;
-    left_parts[i * 2 + 1] = lhs[i] / fft_base;
+    int chunk = lhs[i];
+
+    for (std::size_t part = 0; part < fft_parts; ++part) {
+      left_parts[i * fft_parts + part] = chunk % fft_base;
+      chunk /= fft_base;
+    }
   }
 
   for (std::size_t i = 0; i < rhs.size(); ++i) {
-    right_parts[i * 2] = rhs[i] % fft_base;
-    right_parts[i * 2 + 1] = rhs[i] / fft_base;
+    int chunk = rhs[i];
+
+    for (std::size_t part = 0; part < fft_parts; ++part) {
+      right_parts[i * fft_parts + part] = chunk % fft_base;
+      chunk /= fft_base;
+    }
   }
 
   while (left_parts.size() > 1 && left_parts.back() == 0) {
@@ -289,13 +292,20 @@ int2048::multiply_abs_fft(const std::vector<int> &lhs,
   }
 
   std::vector<int> result;
-  result.reserve((small_digits.size() + 1) / 2);
+  result.reserve(
+      (small_digits.size() + fft_parts - 1) / fft_parts);
 
-  for (std::size_t i = 0; i < small_digits.size(); i += 2) {
-    int chunk = small_digits[i];
+  for (std::size_t i = 0;
+       i < small_digits.size();
+       i += fft_parts) {
+    int chunk = 0;
+    int multiplier = 1;
 
-    if (i + 1 < small_digits.size()) {
-      chunk += small_digits[i + 1] * fft_base;
+    for (std::size_t part = 0;
+         part < fft_parts && i + part < small_digits.size();
+         ++part) {
+      chunk += small_digits[i + part] * multiplier;
+      multiplier *= fft_base;
     }
 
     result.push_back(chunk);
@@ -796,13 +806,12 @@ std::ostream &operator<<(std::ostream &output,
        --i) {
     const int chunk = value.digits[i - 1];
 
-    output.put(static_cast<char>(
-        '0' + (chunk / 1000) % 10));
-    output.put(static_cast<char>(
-        '0' + (chunk / 100) % 10));
-    output.put(static_cast<char>(
-        '0' + (chunk / 10) % 10));
-    output.put(static_cast<char>('0' + chunk % 10));
+    for (int divisor = base / 10;
+         divisor != 0;
+         divisor /= 10) {
+      output.put(static_cast<char>(
+          '0' + (chunk / divisor) % 10));
+    }
   }
 
   return output;

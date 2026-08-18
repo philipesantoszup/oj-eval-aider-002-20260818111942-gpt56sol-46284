@@ -15,9 +15,10 @@ namespace sjtu {
 
 class int2048 {
 private:
-  static constexpr int base = 10000;
-  static constexpr int base_width = 4;
-  static constexpr int fft_base = 100;
+  static constexpr int base = 1000000000;
+  static constexpr int base_width = 9;
+  static constexpr int fft_base = 1000;
+  static constexpr std::size_t fft_parts = 3;
   static constexpr std::size_t fft_threshold = 64;
 
   std::vector<int> digits;
@@ -99,7 +100,7 @@ public:
   friend bool operator<(const int2048 &lhs,
                         const int2048 &rhs);
   friend bool operator>(const int2048 &lhs,
-                        const int2048 &rhs);
+                         const int2048 &rhs);
   friend bool operator<=(const int2048 &lhs,
                          const int2048 &rhs);
   friend bool operator>=(const int2048 &lhs,
