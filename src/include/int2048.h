@@ -2,12 +2,6 @@
 #ifndef SJTU_BIGINTEGER
 #define SJTU_BIGINTEGER
 
-// Integer 1:
-// Implement a signed big integer class that only needs to support simple addition and subtraction
-
-// Integer 2:
-// Implement a signed big integer class that supports addition, subtraction, multiplication, and division, and overload related operators
-
 // Do not use any header files other than the following
 #include <complex>
 #include <cstdio>
@@ -18,70 +12,100 @@
 // Do not use "using namespace std;"
 
 namespace sjtu {
+
 class int2048 {
-  // todo
+private:
+  static constexpr int base = 10000;
+  static constexpr int base_width = 4;
+  static constexpr int fft_base = 100;
+  static constexpr std::size_t fft_threshold = 64;
+
+  std::vector<int> digits;
+  bool negative;
+
+  void normalize();
+
+  static bool is_zero(const std::vector<int> &value);
+  static int compare_abs(const std::vector<int> &lhs,
+                         const std::vector<int> &rhs);
+
+  void add_abs(const std::vector<int> &rhs);
+  void subtract_abs(const std::vector<int> &rhs);
+
+  static std::vector<int>
+  multiply_abs(const std::vector<int> &lhs,
+               const std::vector<int> &rhs);
+
+  static std::vector<int>
+  multiply_abs_naive(const std::vector<int> &lhs,
+                     const std::vector<int> &rhs);
+
+  static std::vector<int>
+  multiply_abs_fft(const std::vector<int> &lhs,
+                   const std::vector<int> &rhs);
+
+  static void fft(std::vector<std::complex<double>> &values,
+                  bool inverse);
+
+  static void divmod_abs(const std::vector<int> &dividend,
+                         const std::vector<int> &divisor,
+                         std::vector<int> &quotient,
+                         std::vector<int> &remainder);
+
 public:
-  // Constructors
   int2048();
-  int2048(long long);
-  int2048(const std::string &);
-  int2048(const int2048 &);
+  int2048(long long value);
+  int2048(const std::string &value);
+  int2048(const int2048 &other);
 
-  // The parameter types of the following functions are for reference only, you can choose to use constant references or not
-  // If needed, you can add other required functions yourself
-  // ===================================
-  // Integer1
-  // ===================================
-
-  // Read a big integer
-  void read(const std::string &);
-  // Output the stored big integer, no need for newline
+  void read(const std::string &value);
   void print();
 
-  // Add a big integer
-  int2048 &add(const int2048 &);
-  // Return the sum of two big integers
-  friend int2048 add(int2048, const int2048 &);
+  int2048 &add(const int2048 &rhs);
+  friend int2048 add(int2048 lhs, const int2048 &rhs);
 
-  // Subtract a big integer
-  int2048 &minus(const int2048 &);
-  // Return the difference of two big integers
-  friend int2048 minus(int2048, const int2048 &);
-
-  // ===================================
-  // Integer2
-  // ===================================
+  int2048 &minus(const int2048 &rhs);
+  friend int2048 minus(int2048 lhs, const int2048 &rhs);
 
   int2048 operator+() const;
   int2048 operator-() const;
 
-  int2048 &operator=(const int2048 &);
+  int2048 &operator=(const int2048 &rhs);
 
-  int2048 &operator+=(const int2048 &);
-  friend int2048 operator+(int2048, const int2048 &);
+  int2048 &operator+=(const int2048 &rhs);
+  friend int2048 operator+(int2048 lhs, const int2048 &rhs);
 
-  int2048 &operator-=(const int2048 &);
-  friend int2048 operator-(int2048, const int2048 &);
+  int2048 &operator-=(const int2048 &rhs);
+  friend int2048 operator-(int2048 lhs, const int2048 &rhs);
 
-  int2048 &operator*=(const int2048 &);
-  friend int2048 operator*(int2048, const int2048 &);
+  int2048 &operator*=(const int2048 &rhs);
+  friend int2048 operator*(int2048 lhs, const int2048 &rhs);
 
-  int2048 &operator/=(const int2048 &);
-  friend int2048 operator/(int2048, const int2048 &);
+  int2048 &operator/=(const int2048 &rhs);
+  friend int2048 operator/(int2048 lhs, const int2048 &rhs);
 
-  int2048 &operator%=(const int2048 &);
-  friend int2048 operator%(int2048, const int2048 &);
+  int2048 &operator%=(const int2048 &rhs);
+  friend int2048 operator%(int2048 lhs, const int2048 &rhs);
 
-  friend std::istream &operator>>(std::istream &, int2048 &);
-  friend std::ostream &operator<<(std::ostream &, const int2048 &);
+  friend std::istream &operator>>(std::istream &input,
+                                  int2048 &value);
+  friend std::ostream &operator<<(std::ostream &output,
+                                  const int2048 &value);
 
-  friend bool operator==(const int2048 &, const int2048 &);
-  friend bool operator!=(const int2048 &, const int2048 &);
-  friend bool operator<(const int2048 &, const int2048 &);
-  friend bool operator>(const int2048 &, const int2048 &);
-  friend bool operator<=(const int2048 &, const int2048 &);
-  friend bool operator>=(const int2048 &, const int2048 &);
+  friend bool operator==(const int2048 &lhs,
+                         const int2048 &rhs);
+  friend bool operator!=(const int2048 &lhs,
+                         const int2048 &rhs);
+  friend bool operator<(const int2048 &lhs,
+                        const int2048 &rhs);
+  friend bool operator>(const int2048 &lhs,
+                        const int2048 &rhs);
+  friend bool operator<=(const int2048 &lhs,
+                         const int2048 &rhs);
+  friend bool operator>=(const int2048 &lhs,
+                         const int2048 &rhs);
 };
+
 } // namespace sjtu
 
 #endif

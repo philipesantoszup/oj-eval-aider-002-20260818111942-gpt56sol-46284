@@ -14,6 +14,7 @@ class int2048 {
 private:
   static constexpr int base = 10000;
   static constexpr int base_width = 4;
+  static constexpr int fft_base = 100;
   static constexpr std::size_t fft_threshold = 64;
 
   std::vector<int> digits;
@@ -40,7 +41,8 @@ private:
   multiply_abs_fft(const std::vector<int> &lhs,
                    const std::vector<int> &rhs);
 
-  static void fft(std::vector<std::complex<double>> &values, bool inverse);
+  static void fft(std::vector<std::complex<double>> &values,
+                  bool inverse);
 
   static void divmod_abs(const std::vector<int> &dividend,
                          const std::vector<int> &divisor,
@@ -82,16 +84,23 @@ public:
   int2048 &operator%=(const int2048 &rhs);
   friend int2048 operator%(int2048 lhs, const int2048 &rhs);
 
-  friend std::istream &operator>>(std::istream &input, int2048 &value);
+  friend std::istream &operator>>(std::istream &input,
+                                  int2048 &value);
   friend std::ostream &operator<<(std::ostream &output,
                                   const int2048 &value);
 
-  friend bool operator==(const int2048 &lhs, const int2048 &rhs);
-  friend bool operator!=(const int2048 &lhs, const int2048 &rhs);
-  friend bool operator<(const int2048 &lhs, const int2048 &rhs);
-  friend bool operator>(const int2048 &lhs, const int2048 &rhs);
-  friend bool operator<=(const int2048 &lhs, const int2048 &rhs);
-  friend bool operator>=(const int2048 &lhs, const int2048 &rhs);
+  friend bool operator==(const int2048 &lhs,
+                         const int2048 &rhs);
+  friend bool operator!=(const int2048 &lhs,
+                         const int2048 &rhs);
+  friend bool operator<(const int2048 &lhs,
+                        const int2048 &rhs);
+  friend bool operator>(const int2048 &lhs,
+                        const int2048 &rhs);
+  friend bool operator<=(const int2048 &lhs,
+                         const int2048 &rhs);
+  friend bool operator>=(const int2048 &lhs,
+                         const int2048 &rhs);
 };
 
 int2048::int2048() : digits(1, 0), negative(false) {}
@@ -235,8 +244,8 @@ void int2048::fft(std::vector<std::complex<double>> &values,
         2.0 * pi / static_cast<double>(length) *
         (inverse ? -1.0 : 1.0);
 
-    const std::complex<double> root(
-        std::cos(angle), std::sin(angle));
+    const std::complex<double> root(std::cos(angle),
+                                    std::sin(angle));
 
     for (std::size_t start = 0; start < size; start += length) {
       std::complex<double> factor(1.0, 0.0);
@@ -245,7 +254,6 @@ void int2048::fft(std::vector<std::complex<double>> &values,
       for (std::size_t offset = 0; offset < half; ++offset) {
         const std::complex<double> even =
             values[start + offset];
-
         const std::complex<double> odd =
             values[start + offset + half] * factor;
 
@@ -303,23 +311,47 @@ int2048::multiply_abs_naive(const std::vector<int> &lhs,
 std::vector<int>
 int2048::multiply_abs_fft(const std::vector<int> &lhs,
                           const std::vector<int> &rhs) {
+  std::vector<int> left_parts(lhs.size() * 2, 0);
+  std::vector<int> right_parts(rhs.size() * 2, 0);
+
+  for (std::size_t i = 0; i < lhs.size(); ++i) {
+    left_parts[i * 2] = lhs[i] % fft_base;
+    left_parts[i * 2 + 1] = lhs[i] / fft_base;
+  }
+
+  for (std::size_t i = 0; i < rhs.size(); ++i) {
+    right_parts[i * 2] = rhs[i] % fft_base;
+    right_parts[i * 2 + 1] = rhs[i] / fft_base;
+  }
+
+  while (left_parts.size() > 1 && left_parts.back() == 0) {
+    left_parts.pop_back();
+  }
+
+  while (right_parts.size() > 1 && right_parts.back() == 0) {
+    right_parts.pop_back();
+  }
+
+  const std::size_t coefficient_count =
+      left_parts.size() + right_parts.size() - 1;
+
   std::size_t transform_size = 1;
 
-  while (transform_size < lhs.size() + rhs.size()) {
+  while (transform_size < coefficient_count) {
     transform_size <<= 1;
   }
 
   std::vector<std::complex<double>> left(transform_size);
   std::vector<std::complex<double>> right(transform_size);
 
-  for (std::size_t i = 0; i < lhs.size(); ++i) {
+  for (std::size_t i = 0; i < left_parts.size(); ++i) {
     left[i] = std::complex<double>(
-        static_cast<double>(lhs[i]), 0.0);
+        static_cast<double>(left_parts[i]), 0.0);
   }
 
-  for (std::size_t i = 0; i < rhs.size(); ++i) {
+  for (std::size_t i = 0; i < right_parts.size(); ++i) {
     right[i] = std::complex<double>(
-        static_cast<double>(rhs[i]), 0.0);
+        static_cast<double>(right_parts[i]), 0.0);
   }
 
   fft(left, false);
@@ -331,32 +363,43 @@ int2048::multiply_abs_fft(const std::vector<int> &lhs,
 
   fft(left, true);
 
-  std::vector<int> result;
-  result.reserve(transform_size + 2);
+  std::vector<int> small_digits;
+  small_digits.reserve(coefficient_count + 8);
 
   long long carry = 0;
 
-  for (std::size_t i = 0; i < transform_size; ++i) {
-    long long coefficient =
+  for (std::size_t i = 0; i < coefficient_count; ++i) {
+    const long long coefficient =
         static_cast<long long>(left[i].real() + 0.5);
+    const long long current = coefficient + carry;
 
-    long long current = coefficient + carry;
-
-    if (current < 0) {
-      const long long correction =
-          (-current + base - 1) / base;
-      current += correction * base;
-      carry = -correction;
-    } else {
-      carry = current / base;
-    }
-
-    result.push_back(static_cast<int>(current % base));
+    small_digits.push_back(
+        static_cast<int>(current % fft_base));
+    carry = current / fft_base;
   }
 
-  while (carry > 0) {
-    result.push_back(static_cast<int>(carry % base));
-    carry /= base;
+  while (carry != 0) {
+    small_digits.push_back(
+        static_cast<int>(carry % fft_base));
+    carry /= fft_base;
+  }
+
+  while (small_digits.size() > 1 &&
+         small_digits.back() == 0) {
+    small_digits.pop_back();
+  }
+
+  std::vector<int> result;
+  result.reserve((small_digits.size() + 1) / 2);
+
+  for (std::size_t i = 0; i < small_digits.size(); i += 2) {
+    int chunk = small_digits[i];
+
+    if (i + 1 < small_digits.size()) {
+      chunk += small_digits[i + 1] * fft_base;
+    }
+
+    result.push_back(chunk);
   }
 
   while (result.size() > 1 && result.back() == 0) {
@@ -402,7 +445,6 @@ void int2048::divmod_abs(const std::vector<int> &dividend,
 
       quotient[i - 1] =
           static_cast<int>(current / divisor[0]);
-
       current_remainder = current % divisor[0];
     }
 
@@ -410,16 +452,13 @@ void int2048::divmod_abs(const std::vector<int> &dividend,
       quotient.pop_back();
     }
 
-    remainder.assign(
-        1, static_cast<int>(current_remainder));
+    remainder.assign(1, static_cast<int>(current_remainder));
     return;
   }
 
   const std::size_t dividend_size = dividend.size();
   const std::size_t divisor_size = divisor.size();
-
-  const int normalization =
-      base / (divisor.back() + 1);
+  const int normalization = base / (divisor.back() + 1);
 
   std::vector<int> normalized_dividend = dividend;
   std::vector<int> normalized_divisor = divisor;
@@ -436,13 +475,11 @@ void int2048::divmod_abs(const std::vector<int> &dividend,
 
     normalized_dividend[i] =
         static_cast<int>(current % base);
-
     carry = current / base;
   }
 
   if (carry != 0) {
-    normalized_dividend.push_back(
-        static_cast<int>(carry));
+    normalized_dividend.push_back(static_cast<int>(carry));
   } else {
     normalized_dividend.push_back(0);
   }
@@ -459,7 +496,6 @@ void int2048::divmod_abs(const std::vector<int> &dividend,
 
     normalized_divisor[i] =
         static_cast<int>(current % base);
-
     carry = current / base;
   }
 
@@ -480,36 +516,29 @@ void int2048::divmod_abs(const std::vector<int> &dividend,
         normalized_dividend[j + divisor_size - 1];
 
     long long estimate =
-        numerator /
-        normalized_divisor[divisor_size - 1];
+        numerator / normalized_divisor[divisor_size - 1];
 
     long long estimate_remainder =
         numerator -
-        estimate *
-            normalized_divisor[divisor_size - 1];
+        estimate * normalized_divisor[divisor_size - 1];
 
     if (estimate >= base) {
       estimate = base - 1;
       estimate_remainder =
           numerator -
-          estimate *
-              normalized_divisor[divisor_size - 1];
+          estimate * normalized_divisor[divisor_size - 1];
     }
 
-    if (divisor_size > 1) {
-      while (
-          estimate *
-                  normalized_divisor[divisor_size - 2] >
-          estimate_remainder * base +
-              normalized_dividend[
-                  j + divisor_size - 2]) {
-        --estimate;
-        estimate_remainder +=
-            normalized_divisor[divisor_size - 1];
+    while (
+        estimate * normalized_divisor[divisor_size - 2] >
+        estimate_remainder * base +
+            normalized_dividend[j + divisor_size - 2]) {
+      --estimate;
+      estimate_remainder +=
+          normalized_divisor[divisor_size - 1];
 
-        if (estimate_remainder >= base) {
-          break;
-        }
+      if (estimate_remainder >= base) {
+        break;
       }
     }
 
@@ -518,17 +547,14 @@ void int2048::divmod_abs(const std::vector<int> &dividend,
 
     for (std::size_t i = 0; i < divisor_size; ++i) {
       const long long product =
-          estimate * normalized_divisor[i] +
-          product_carry;
+          estimate * normalized_divisor[i] + product_carry;
 
       product_carry = product / base;
       const int low_product =
           static_cast<int>(product % base);
 
       int current =
-          normalized_dividend[j + i] -
-          low_product -
-          borrow;
+          normalized_dividend[j + i] - low_product - borrow;
 
       if (current < 0) {
         current += base;
@@ -551,9 +577,7 @@ void int2048::divmod_abs(const std::vector<int> &dividend,
 
       int addition_carry = 0;
 
-      for (std::size_t i = 0;
-           i < divisor_size;
-           ++i) {
+      for (std::size_t i = 0; i < divisor_size; ++i) {
         int current =
             normalized_dividend[j + i] +
             normalized_divisor[i] +
@@ -574,7 +598,6 @@ void int2048::divmod_abs(const std::vector<int> &dividend,
 
     normalized_dividend[j + divisor_size] =
         static_cast<int>(top);
-
     quotient[j] = static_cast<int>(estimate);
   }
 
@@ -596,12 +619,10 @@ void int2048::divmod_abs(const std::vector<int> &dividend,
 
     remainder[i - 1] =
         static_cast<int>(current / normalization);
-
     division_remainder = current % normalization;
   }
 
-  while (remainder.size() > 1 &&
-         remainder.back() == 0) {
+  while (remainder.size() > 1 && remainder.back() == 0) {
     remainder.pop_back();
   }
 }
@@ -646,9 +667,7 @@ void int2048::read(const std::string &value) {
 
     int chunk = 0;
 
-    for (std::string::size_type i = start;
-         i < end;
-         ++i) {
+    for (std::string::size_type i = start; i < end; ++i) {
       chunk = chunk * 10 + (value[i] - '0');
     }
 
@@ -723,10 +742,8 @@ int2048 &int2048::operator+=(const int2048 &rhs) {
     return *this;
   }
 
-  std::vector<int> result = rhs.digits;
-  std::vector<int> original = digits;
-
-  digits = result;
+  const std::vector<int> original = digits;
+  digits = rhs.digits;
   subtract_abs(original);
   negative = rhs.negative;
 
@@ -757,7 +774,7 @@ int2048 &int2048::operator-=(const int2048 &rhs) {
     return *this;
   }
 
-  std::vector<int> original = digits;
+  const std::vector<int> original = digits;
   digits = rhs.digits;
   subtract_abs(original);
   negative = !negative;
@@ -771,12 +788,10 @@ int2048 operator-(int2048 lhs, const int2048 &rhs) {
 }
 
 int2048 &int2048::operator*=(const int2048 &rhs) {
-  const bool result_negative =
-      negative != rhs.negative;
+  const bool result_negative = negative != rhs.negative;
 
   digits = multiply_abs(digits, rhs.digits);
-  negative =
-      result_negative && !is_zero(digits);
+  negative = result_negative && !is_zero(digits);
 
   return *this;
 }
@@ -787,14 +802,12 @@ int2048 operator*(int2048 lhs, const int2048 &rhs) {
 }
 
 int2048 &int2048::operator/=(const int2048 &rhs) {
-  const bool result_negative =
-      negative != rhs.negative;
+  const bool result_negative = negative != rhs.negative;
 
   std::vector<int> quotient;
   std::vector<int> remainder;
 
-  divmod_abs(
-      digits, rhs.digits, quotient, remainder);
+  divmod_abs(digits, rhs.digits, quotient, remainder);
 
   if (result_negative && !is_zero(remainder)) {
     int carry = 1;
@@ -813,10 +826,9 @@ int2048 &int2048::operator/=(const int2048 &rhs) {
   }
 
   digits = quotient;
-  negative =
-      result_negative && !is_zero(digits);
-
+  negative = result_negative && !is_zero(digits);
   normalize();
+
   return *this;
 }
 
@@ -832,8 +844,7 @@ int2048 &int2048::operator%=(const int2048 &rhs) {
   std::vector<int> quotient;
   std::vector<int> remainder;
 
-  divmod_abs(
-      digits, rhs.digits, quotient, remainder);
+  divmod_abs(digits, rhs.digits, quotient, remainder);
 
   if (is_zero(remainder)) {
     digits.assign(1, 0);
@@ -888,15 +899,11 @@ std::ostream &operator<<(std::ostream &output,
 
     output.put(static_cast<char>(
         '0' + (chunk / 1000) % 10));
-
     output.put(static_cast<char>(
         '0' + (chunk / 100) % 10));
-
     output.put(static_cast<char>(
         '0' + (chunk / 10) % 10));
-
-    output.put(static_cast<char>(
-        '0' + chunk % 10));
+    output.put(static_cast<char>('0' + chunk % 10));
   }
 
   return output;
